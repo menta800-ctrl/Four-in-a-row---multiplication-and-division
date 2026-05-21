@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ארבע בשורה חשבוני</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { 
+            font-family: 'Rubik', sans-serif; 
+            background: radial-gradient(circle at top, #1e1b4b 0%, #0f172a 100%); 
+            touch-action: manipulation; 
+        }
+        
+        .board-grid { 
+            background-color: #1e3a8a; 
+            border-bottom: 8px solid #1d4ed8; 
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); 
+        }
+        
+        .board-cell { 
+            position: relative; 
+            background-color: #0f172a; 
+            box-shadow: inset 0 4px 6px rgba(0, 0, 0, 0.6); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        
+        .disc { 
+            position: absolute; 
+            inset: 0; 
+            margin: auto; 
+            width: 86%; 
+            height: 86%; 
+            border-radius: 50%; 
+            opacity: 0; 
+            transition: opacity 0.3s ease; 
+        }
+        
+        .disc.dropped { 
+            opacity: 1; 
+        }
+        
+        .disc.preview { 
+            opacity: 0.4 !important; 
+        } 
+        
+        @keyframes pulse-win {
+            0%, 100% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.08); filter: brightness(1.4); box-shadow: 0 0 20px currentColor; }
+        }
+        .disc.win-disc { 
+            animation: pulse-win 0.8s infinite ease-in-out; 
+            z-index: 10; 
+        }
+
+        .keypad-btn:active { 
+            transform: scale(0.95); 
+        }
+        
+        @keyframes shake { 
+            0%, 100% { transform: translateX(0); } 
+            25% { transform: translateX(-6px); } 
+            75% { transform: translateX(6px); } 
+        }
+        .animate-shake { 
+            animation: shake 0.3s ease-in-out; 
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-100 flex flex-col items-center justify-center p-2 md:p-4 overflow-y-scroll overflow-x-hidden">
+
+    <!-- Setup Screen (Initial Configurations) -->
+    <div id="setup-screen" class="w-full max-w-lg bg-slate-900/90 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-slate-800 shadow-2xl space-y-6 my-auto">
+        <h1 class="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent text-center">ארבע בשורה חשבוני</h1>
+
+        <div class="space-y-4">
+            <!-- Game Mode Selection -->
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-300">בחר מצב משחק:</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="gameMode" value="pvp" checked class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl bg-slate-800 border-2 border-slate-700 peer-checked:border-blue-500 text-slate-300 peer-checked:text-white font-medium">שחקן נגד שחקן</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="gameMode" value="pve" class="peer sr-only">
+                        <div class="p-3 text-center rounded-xl bg-slate-800 border-2 border-slate-700 peer-checked:border-blue-500 text-slate-300 peer-checked:text-white font-medium">שחקן נגד מחשב</div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Operations Selection -->
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-300">פעולות חשבון:</label>
+                <div class="grid grid-cols-3 gap-2">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="operations" value="mul" checked class="peer sr-only">
+                        <div class="p-2 text-center rounded-lg bg-slate-800 border border-slate-700 peer-checked:border-purple-500 text-sm">כפל (×)</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="operations" value="div" class="peer sr-only">
+                        <div class="p-2 text-center rounded-lg bg-slate-800 border border-slate-700 peer-checked:border-purple-500 text-sm">חילוק (:)</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="operations" value="both" class="peer sr-only">
+                        <div class="p-2 text-center rounded-lg bg-slate-800 border border-slate-700 peer-checked:border-purple-500 text-sm">מעורב</div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Multipliers Selector (Empty by default) -->
+            <div class="space-y-2">
+                <label class="block text-sm font-bold text-slate-300">כפולות לתרגול:</label>
+                <div class="grid grid-cols-5 gap-2 text-center" id="multipliers-container"></div>
+            </div>
+        </div>
+
+        <button id="start-btn" onclick="startGame()" class="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-lg hover:scale-[1.02] transition-all">התחל משחק</button>
+    </div>
+
+    <!-- Game Screen (Guaranteed Side by Side on all screens with flex-nowrap) -->
+    <div id="game-screen" class="hidden w-full max-w-5xl flex flex-row flex-nowrap gap-4 md:gap-6 my-auto items-center justify-center px-2">
+        
+        <!-- Left Side: Board and status (10% smaller board container) -->
+        <div class="w-[55%] flex flex-col items-center justify-between gap-4">
+            <div class="w-full flex items-center justify-center gap-6 md:gap-10 bg-slate-900/80 p-3 md:p-4 rounded-2xl border border-slate-800">
+                <div id="p1-indicator" class="px-5 py-2 md:px-6 md:py-2.5 bg-red-500/20 border-2 border-red-500 rounded-xl font-bold text-base md:text-lg transition-opacity">שחקן 1</div>
+                <div id="p2-indicator" class="px-5 py-2 md:px-6 md:py-2.5 bg-yellow-500/20 border-2 border-yellow-500 rounded-xl font-bold text-base md:text-lg opacity-50 transition-opacity">שחקן 2</div>
+            </div>
+            
+            <!-- 10% smaller board container -->
+            <div class="relative w-[90%] mx-auto aspect-[7/6] board-grid p-2 rounded-3xl">
+                <div id="board" class="absolute inset-2 grid grid-cols-7 grid-rows-6 gap-2"></div>
+                <!-- Interactive Invisible Columns for Easy Click/Tap -->
+                <div class="absolute inset-2 grid grid-cols-7 h-full z-20">
+                    <div onclick="handleColumnClick(0)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(1)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(2)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(3)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(4)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(5)" class="cursor-pointer"></div>
+                    <div onclick="handleColumnClick(6)" class="cursor-pointer"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side: Math control panel (Centered feedback and content, 20% smaller New Game button) -->
+        <div class="w-[45%] bg-slate-900 border border-slate-700 rounded-3xl p-4 md:p-6 h-[480px] md:h-[520px] flex flex-col shadow-2xl justify-between">
+            <div id="panel-content" class="flex flex-col flex-grow justify-center items-center text-center">
+                <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4">
+                    <h2 class="text-lg md:text-xl font-bold text-slate-300">ברוכים הבאים!</h2>
+                    <p class="text-sm md:text-base text-slate-400">אנא לחצו על עמודה בלוח כדי לקבל תרגיל ולהתחיל לשחק.</p>
+                </div>
+            </div>
+
+            <!-- New Game Button (Reduced in size by 20% for aesthetic balance) -->
+            <div class="mt-4 pt-4 border-t border-slate-800 w-full flex justify-center">
+                <button onclick="location.reload()" class="w-[65%] py-2 md:py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl font-bold text-xs md:text-sm transition-all shadow-md">משחק חדש</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ROWS = 6; 
+        const COLS = 7;
+        let boardState = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        let currentPlayer = 1;
+        let isGameActive = true;
+        let config = { mode: 'pvp', operations: 'mul', multipliers: [] };
+        let currentTurnData = { col: -1, row: -1, lives: 2, correctAnswer: 0, displayStr: "", input: "" };
+        let previewDiscElement = null; 
+
+        // Generate multipliers list dynamically (Unchecked by default)
+        const mc = document.getElementById('multipliers-container');
+        for (let i = 1; i <= 10; i++) {
+            mc.innerHTML += `<label class="cursor-pointer"><input type="checkbox" value="${i}" class="peer sr-only"><div class="p-2 text-center rounded-lg bg-slate-800 border border-slate-700 peer-checked:border-purple-500 text-slate-300 peer-checked:text-white text-sm font-bold transition-all">${i}</div></label>`;
+        }
+
+        function startGame() {
+            config.mode = document.querySelector('input[name="gameMode"]:checked').value;
+            config.operations = document.querySelector('input[name="operations"]:checked').value;
+            config.multipliers = Array.from(document.querySelectorAll('#multipliers-container input:checked')).map(cb => parseInt(cb.value));
+            
+            // Require multiplier selection
+            if(config.multipliers.length === 0) {
+                const btn = document.getElementById('start-btn');
+                const origText = btn.innerText;
+                btn.innerText = "אנא בחרו תרגול!";
+                btn.classList.add('bg-red-500');
+                btn.classList.remove('from-blue-500', 'to-purple-600');
+                setTimeout(() => {
+                    btn.innerText = origText;
+                    btn.classList.remove('bg-red-500');
+                    btn.classList.add('from-blue-500', 'to-purple-600');
+                }, 2000);
+                return; 
+            }
+            
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            
+            if(config.mode === 'pve') {
+                document.getElementById('p2-indicator').innerText = "מחשב";
+            }
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const b = document.getElementById('board'); 
+            b.innerHTML = '';
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    const cell = document.createElement('div'); 
+                    cell.className = 'board-cell rounded-full w-full h-full';
+                    const disc = document.createElement('div'); 
+                    disc.id = `disc-${r}-${c}`; 
+                    disc.className = `disc ${boardState[r][c]===1 ? 'bg-red-500 dropped' : boardState[r][c]===2 ? 'bg-yellow-400 dropped' : 'bg-transparent'}`;
+                    cell.appendChild(disc); 
+                    b.appendChild(cell);
+                }
+            }
+        }
+
+        function clearPreviews() {
+            if (previewDiscElement) {
+                previewDiscElement.classList.remove('preview', 'bg-red-500', 'bg-yellow-400');
+                previewDiscElement.classList.add('bg-transparent');
+                previewDiscElement = null;
+            }
+            // Ensure no rogue previews remain
+            for (let r=0; r<ROWS; r++) {
+                for (let c=0; c<COLS; c++) {
+                    const disc = document.getElementById(`disc-${r}-${c}`);
+                    if (disc && boardState[r][c] === 0) {
+                        disc.className = 'disc bg-transparent';
+                    }
+                }
+            }
+        }
+
+        function handleColumnClick(col) {
+            if(!isGameActive || (config.mode === 'pve' && currentPlayer === 2)) return;
+            const row = getRow(col); 
+            if(row === -1) return;
+            
+            clearPreviews();
+            
+            // Show preview disc with exactly 70% opacity
+            const disc = document.getElementById(`disc-${row}-${col}`);
+            disc.classList.remove('bg-transparent');
+            disc.classList.add(currentPlayer === 1 ? 'bg-red-500' : 'bg-yellow-400', 'preview');
+            previewDiscElement = disc;
+
+            startMath(col, row);
+        }
+
+        function getRow(col) { 
+            for(let r=ROWS-1; r>=0; r--) {
+                if(boardState[r][col]===0) return r; 
+            }
+            return -1; 
+        }
+
+        function genQ() {
+            const m = config.multipliers[Math.floor(Math.random() * config.multipliers.length)];
+            const o = Math.floor(Math.random() * 11); // Range 0 to 10
+            let op = config.operations;
+            if(op === 'both') op = Math.random() < 0.5 ? 'mul' : 'div';
+            
+            if(op === 'mul') {
+                return Math.random() < 0.5 ? { text: `${o} × ${m}`, ans: o * m } : { text: `${m} × ${o}`, ans: m * o };
+            } else {
+                // Div logic with strict bounds using selected multiplier
+                const product = m * o;
+                if (product === 0) return { text: `0 : ${m}`, ans: 0 };
+                return Math.random() < 0.5 ? { text: `${product} : ${m}`, ans: o } : { text: `${product} : ${o}`, ans: m };
+            }
+        }
+
+        function startMath(col, row) {
+            currentTurnData.col = col; 
+            currentTurnData.row = row;
+            currentTurnData.lives = 2; 
+            currentTurnData.input = "";
+            const q = genQ(); 
+            currentTurnData.correctAnswer = q.ans; 
+            currentTurnData.displayStr = q.text;
+            renderMathPanel();
+        }
+
+        function renderMathPanel() {
+            const panel = document.getElementById('panel-content');
+            panel.innerHTML = `
+                <div class="flex flex-col items-center justify-center w-full h-full space-y-4 text-center">
+                    <div class="flex justify-center gap-2 mb-1">
+                        ${Array(2).fill().map((_, i) => `
+                            <i class="fa-solid fa-heart text-2xl ${i < currentTurnData.lives ? 'text-red-500' : 'text-slate-700'}"></i>
+                        `).join('')}
+                    </div>
+                    <div class="text-2xl md:text-3xl font-black text-white" style="direction: ltr;">${currentTurnData.displayStr} = ?</div>
+                    <div id="answer-display" class="w-full text-center text-3xl font-black py-2 border-b-4 border-blue-500 h-[60px] flex items-center justify-center text-slate-100" style="direction: ltr;">${currentTurnData.input}</div>
+                    <div id="feedback-msg" class="text-red-400 font-bold h-6 text-sm md:text-base w-full text-center"></div>
+                    <div class="grid grid-cols-3 gap-2 md:gap-3 w-full max-w-[240px]">
+                        ${['1','2','3','4','5','6','7','8','9','del','0','OK'].map(k => {
+                            let btnClass = "keypad-btn py-3 bg-slate-800 rounded-xl font-bold text-lg border border-slate-700 hover:bg-slate-700 active:scale-95 transition-transform text-slate-100";
+                            let label = k;
+                            if (k === 'del') {
+                                label = '<i class="fa-solid fa-delete-left"></i>';
+                                btnClass = "keypad-btn py-3 bg-slate-700 rounded-xl font-bold text-lg border border-slate-600 hover:bg-slate-600 active:scale-95 transition-transform text-slate-100";
+                            } else if (k === 'OK') {
+                                label = 'אישור';
+                                btnClass = "keypad-btn py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-lg border border-green-700 active:scale-95 transition-transform shadow-lg";
+                            }
+                            return `<button onclick="pressKey('${k}')" class="${btnClass}">${label}</button>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function pressKey(k) {
+            if(k === 'del') {
+                currentTurnData.input = currentTurnData.input.slice(0, -1);
+            } else if(k === 'OK') {
+                submitAnswer();
+                return; // Prevent updating missing #answer-display
+            } else if(currentTurnData.input.length < 3) {
+                currentTurnData.input += k;
+            }
+            
+            const ansDisp = document.getElementById('answer-display');
+            if (ansDisp) {
+                ansDisp.innerText = currentTurnData.input;
+            }
+        }
+
+        function submitAnswer() {
+            if(parseInt(currentTurnData.input) === currentTurnData.correctAnswer) {
+                const feedbacks = ["כל הכבוד!", "יפה מאוד!", "נכון מאוד!", "איזה יופי!", "נהדר!"];
+                const chosenFeedback = feedbacks[Math.floor(Math.random() * feedbacks.length)];
+                
+                document.getElementById('panel-content').innerHTML = `
+                    <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4 py-6">
+                        <div class="text-3xl font-black text-emerald-400" style="direction:ltr;">${currentTurnData.displayStr} = ${currentTurnData.correctAnswer}</div>
+                        <div class="text-2xl font-bold text-emerald-400 mt-2">${chosenFeedback}</div>
+                    </div>
+                `;
+                
+                // Remove the preview class to show full color instantly upon correct answer
+                if (previewDiscElement) {
+                    previewDiscElement.classList.remove('preview');
+                    previewDiscElement.classList.add('dropped');
+                    previewDiscElement = null;
+                }
+                
+                setTimeout(() => finalizeMove(currentTurnData.col, currentTurnData.row), 1500);
+            } else {
+                currentTurnData.lives--;
+                if(currentTurnData.lives > 0) {
+                    const newQ = genQ();
+                    currentTurnData.correctAnswer = newQ.ans;
+                    currentTurnData.displayStr = newQ.text;
+                    currentTurnData.input = "";
+                    
+                    renderMathPanel();
+                    
+                    const feedbackEl = document.getElementById('feedback-msg');
+                    if (feedbackEl) {
+                        feedbackEl.innerText = "נסה שוב";
+                    }
+                    const ansDisp = document.getElementById('answer-display');
+                    if (ansDisp) {
+                        ansDisp.classList.add('animate-shake');
+                        setTimeout(() => ansDisp.classList.remove('animate-shake'), 500);
+                    }
+                } else {
+                    document.getElementById('panel-content').innerHTML = `
+                        <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4 py-6">
+                            <div class="text-xl font-bold text-red-400">התור עובר!</div>
+                            <div class="text-2xl font-black text-red-400" style="direction:ltr;">${currentTurnData.displayStr} = ${currentTurnData.correctAnswer}</div>
+                        </div>
+                    `;
+                    clearPreviews();
+                    setTimeout(() => { 
+                        switchPlayer(); 
+                    }, 2500);
+                }
+            }
+        }
+
+        function finalizeMove(col, row) {
+            boardState[row][col] = currentPlayer;
+            previewDiscElement = null; 
+            if(checkWin(row, col, currentPlayer, true)) {
+                endGame();
+            } else if (checkTie()) {
+                endTie();
+            } else { 
+                switchPlayer(); 
+            }
+        }
+        
+        function resetPanelState() {
+            const nextPlayerText = currentPlayer === 1 ? "שחקן 1" : "שחקן 2";
+            const colorClass = currentPlayer === 1 ? "text-red-400" : "text-yellow-400";
+            
+            document.getElementById('panel-content').innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4">
+                    <h2 class="text-lg md:text-xl font-bold text-slate-300">תור <span class="${colorClass}">${nextPlayerText}</span></h2>
+                    <p class="text-sm md:text-base text-slate-400">לחצו על עמודה בלוח כדי לקבל תרגיל.</p>
+                </div>
+            `;
+        }
+
+        function switchPlayer() {
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            document.getElementById('p1-indicator').style.opacity = currentPlayer===1 ? '1' : '0.5';
+            document.getElementById('p2-indicator').style.opacity = currentPlayer===2 ? '1' : '0.5';
+            
+            resetPanelState();
+            if(currentPlayer === 2 && config.mode === 'pve') {
+                doAI();
+            }
+        }
+
+        function getBestAIMove() {
+            // 1. Can AI win on this turn?
+            for (let c = 0; c < COLS; c++) {
+                let r = getRow(c);
+                if (r !== -1) {
+                    boardState[r][c] = 2;
+                    if (checkWin(r, c, 2, false)) {
+                        boardState[r][c] = 0;
+                        return c;
+                    }
+                    boardState[r][c] = 0;
+                }
+            }
+            
+            // 2. Can opponent win on next turn? Block them.
+            for (let c = 0; c < COLS; c++) {
+                let r = getRow(c);
+                if (r !== -1) {
+                    boardState[r][c] = 1;
+                    if (checkWin(r, c, 1, false)) {
+                        boardState[r][c] = 0;
+                        return c;
+                    }
+                    boardState[r][c] = 0;
+                }
+            }
+            
+            // 3. Fallback: select central columns first
+            const colOrder = [3, 2, 4, 1, 5, 0, 6];
+            for (let c of colOrder) {
+                if (getRow(c) !== -1) return c;
+            }
+            return -1;
+        }
+
+        function doAI() {
+            if (!isGameActive) return;
+            let col = getBestAIMove();
+            if(col === -1) return;
+            
+            const row = getRow(col);
+            
+            clearPreviews();
+            
+            // Show preview disc for AI with exactly 70% opacity
+            const disc = document.getElementById(`disc-${row}-${col}`);
+            if (disc) {
+                disc.classList.remove('bg-transparent');
+                disc.classList.add('bg-yellow-400', 'preview');
+                previewDiscElement = disc;
+            }
+            
+            const q = genQ();
+            document.getElementById('panel-content').innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4 py-4">
+                    <div class="text-yellow-500 font-bold text-xl md:text-2xl animate-pulse">המחשב חושב...</div>
+                    <div class="text-3xl font-black text-slate-200 mt-4" style="direction:ltr;">${q.text} = ${q.ans}</div>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                if (!isGameActive) return;
+                
+                // Remove preview for AI before checking win
+                if (previewDiscElement) { 
+                    previewDiscElement.classList.remove('preview'); 
+                    previewDiscElement.classList.add('dropped'); 
+                    previewDiscElement = null; 
+                }
+                
+                boardState[row][col] = 2;
+                renderBoard();
+                
+                if(checkWin(row, col, 2, true)) {
+                    endGame();
+                } else if (checkTie()) {
+                    endTie();
+                } else { 
+                    switchPlayer(); 
+                }
+            }, 2000);
+        }
+
+        function checkWin(row, col, player, highlight = true) {
+            const directions = [[1,0], [0,1], [1,1], [1,-1]];
+            for (let [dRow, dCol] of directions) {
+                let count = 1;
+                let winningDiscs = [{r: row, c: col}];
+                for(let sign of [1, -1]) {
+                    let r = row + dRow*sign;
+                    let c = col + dCol*sign;
+                    while(r>=0 && r<ROWS && c>=0 && c<COLS && boardState[r][c]===player) { 
+                        count++; 
+                        winningDiscs.push({r, c}); 
+                        r+=dRow*sign; 
+                        c+=dCol*sign; 
+                    }
+                }
+                if (count >= 4) { 
+                    if (highlight) {
+                        winningDiscs.forEach(p => {
+                            const d = document.getElementById(`disc-${p.r}-${p.c}`);
+                            if (d) d.classList.add('win-disc');
+                        });
+                    }
+                    return true; 
+                }
+            }
+            return false;
+        }
+
+        function checkTie() { 
+            return boardState[0].every(c => c !== 0); 
+        }
+        
+        function endGame() { 
+            isGameActive = false; 
+            document.getElementById('panel-content').innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4 py-8">
+                    <h2 class="text-2xl md:text-3xl font-black text-emerald-400 animate-bounce">כל הכבוד, ניצחת!</h2>
+                    <p class="text-sm md:text-base text-slate-400">השלמתם בהצלחה רצף של ארבע בשורה!</p>
+                </div>
+            `; 
+            
+            // Highlight the New Game button in green
+            const newGameBtn = document.querySelector('button[onclick="location.reload()"]');
+            if (newGameBtn) {
+                newGameBtn.classList.remove('bg-slate-800', 'hover:bg-slate-700', 'text-slate-300');
+                newGameBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'text-white', 'shadow-lg', 'shadow-emerald-500/50');
+            }
+        }
+        
+        function endTie() { 
+            isGameActive = false; 
+            document.getElementById('panel-content').innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-grow text-center space-y-4 py-8">
+                    <h2 class="text-2xl md:text-3xl font-black text-yellow-400">!תיקו</h2>
+                    <p class="text-sm md:text-base text-slate-400">הלוח התמלא. שחקו פעם נוספת!</p>
+                </div>
+            `; 
+        }
+    </script>
+</body>
+</html>
